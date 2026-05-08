@@ -1,0 +1,96 @@
+/* Task 1 - Pass-Through Test
+ * (hadc->Instance == ADC1) - compares the hardware register base address of the ADC peripheral.
+ * (hadc == &hadc1) - compares the handle pointer.
+ * */
+
+int main(void)
+{
+  HAL_TIM_Base_Start(&htim6);
+  HAL_ADC_Start_IT(&hadc1);
+  HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
+  HAL_DAC_Start(&hdac1, DAC_CHANNEL_2);
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+  if (hadc->Instance == ADC1)
+  {
+    uint32_t adc_val = HAL_ADC_GetValue(hadc);	// 12-bit ADC sample: 0..4095
+    HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, adc_val);
+  }
+}
+
+/* Task 2 - MAF Implementation */
+#define ADC_MAX_VALUE      4095.0f
+#define ADC_REF_VOLTAGE    3.3f
+#define MAF_TAPS           4
+
+static float maf_buffer[MAF_TAPS] = {0.0f};
+static uint8_t maf_index = 0;
+static uint8_t maf_count = 0;
+
+
+static float adc_to_normalized(uint32_t adc_val)
+{
+    float x = ((float)adc_val / ADC_MAX_VALUE) * 2.0f - 1.0f;
+    
+    return x;
+}
+
+
+static uint32_t normalized_to_dac(float x)
+{
+    if (x > 1.0f) 
+    {
+    	x = 1.0f;
+    }
+    if (x < -1.0f) 
+    {
+    		x = -1.0f;
+    }
+
+    float dac_f = (x + 1.0f) * 0.5f * ADC_MAX_VALUE;
+    
+    if (dac_f < 0.0f) 
+    {
+    	dac_f = 0.0f;
+    }
+    if (dac_f > ADC_MAX_VALUE) 
+    {
+    	dac_f = ADC_MAX_VALUE;
+    }
+
+    return (uint32_t)(dac_f + 0.5f);
+}
+
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+    if (hadc->Instance == ADC1)
+    {
+        uint32_t adc_val = HAL_ADC_GetValue(hadc);
+        float x = adc_to_normalized(adc_val);
+
+        maf_buffer[maf_index] = x;
+        maf_index = (maf_index + 1) % MAF_TAPS;
+        
+        if (maf_count < MAF_TAPS)
+        {
+            maf_count++;
+        }
+	
+	// Moving Average Filter
+        float sum = 0.0f;
+        for (uint8_t i = 0; i < maf_count; i++)
+        {
+            sum += maf_buffer[i];
+        }
+        float y = sum / (float)maf_count;
+
+        uint32_t dac_raw = normalized_to_dac(x);
+        uint32_t dac_filt = normalized_to_dac(y);
+
+        HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_raw);
+        HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, dac_filt);
+    }
+}
