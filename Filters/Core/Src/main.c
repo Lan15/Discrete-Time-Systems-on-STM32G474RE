@@ -40,12 +40,10 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define MAF_TAPS 4
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-
-COM_InitTypeDef BspCOMInit;
 
 /* USER CODE BEGIN PV */
 
@@ -59,6 +57,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
 
 /* USER CODE END 0 */
 
@@ -91,32 +90,17 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_TIM6_Init();
   MX_ADC1_Init();
   MX_DAC1_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
+
   HAL_TIM_Base_Start(&htim6);
-  HAL_ADC_Start_IT(&hadc1);
   HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
   HAL_DAC_Start(&hdac1, DAC_CHANNEL_2);
+  HAL_ADC_Start_IT(&hadc1);
+
   /* USER CODE END 2 */
-
-  /* Initialize led */
-  BSP_LED_Init(LED_GREEN);
-
-  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
-  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
-
-  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
-  BspCOMInit.BaudRate   = 115200;
-  BspCOMInit.WordLength = COM_WORDLENGTH_8B;
-  BspCOMInit.StopBits   = COM_STOPBITS_1;
-  BspCOMInit.Parity     = COM_PARITY_NONE;
-  BspCOMInit.HwFlowCtl  = COM_HWCONTROL_NONE;
-  if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE)
-  {
-    Error_Handler();
-  }
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -129,94 +113,105 @@ int main(void)
   /* USER CODE END 3 */
 }
 
-/* USER CODE END 4 */
+/* USER CODE BEGIN 4 */
+
 /* Task 1 - Pass-Through Test
  * (hadc->Instance == ADC1) - compares the hardware register base address of the ADC peripheral.
  * (hadc == &hadc1) - compares the handle pointer.
  * */
-/*void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
-{
-  if (hadc->Instance == ADC1)
-  {
-    uint32_t adc_val = HAL_ADC_GetValue(hadc);
-    HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, adc_val);
-  }
-}*/
-
-/* Task 2 - MAF Implementation */
-#define ADC_MAX_VALUE      4095.0f
-#define ADC_REF_VOLTAGE    3.3f
-#define MAF_TAPS           4
-
-static float maf_buffer[MAF_TAPS] = {0.0f};
-static uint8_t maf_index = 0;
-static uint8_t maf_count = 0;
-
-
-static float adc_to_normalized(uint32_t adc_val)
-{
-    float x = ((float)adc_val / ADC_MAX_VALUE) * 2.0f - 1.0f;
-
-    return x;
-}
-
-
-static uint32_t normalized_to_dac(float x)
-{
-    if (x > 1.0f)
-    {
-    	x = 1.0f;
-    }
-    if (x < -1.0f)
-    {
-    		x = -1.0f;
-    }
-
-    float dac_f = (x + 1.0f) * 0.5f * ADC_MAX_VALUE;
-
-    if (dac_f < 0.0f)
-    {
-    	dac_f = 0.0f;
-    }
-    if (dac_f > ADC_MAX_VALUE)
-    {
-    	dac_f = ADC_MAX_VALUE;
-    }
-
-    return (uint32_t)(dac_f + 0.5f);
-}
-
+/*
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
-    if (hadc->Instance == ADC1)
-    {
-        uint32_t adc_val = HAL_ADC_GetValue(hadc);
-        float x = adc_to_normalized(adc_val);
-
-        maf_buffer[maf_index] = x;
-        maf_index = (maf_index + 1) % MAF_TAPS;
-
-        if (maf_count < MAF_TAPS)
-        {
-            maf_count++;
-        }
-
-        // Moving Average Filter
-        float sum = 0.0f;
-        for (uint8_t i = 0; i < maf_count; i++)
-        {
-            sum += maf_buffer[i];
-        }
-        float y = sum / (float)maf_count;
-
-        uint32_t dac_raw = normalized_to_dac(x);
-        uint32_t dac_filt = normalized_to_dac(y);
-
-        HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, dac_raw);
-        HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, dac_raw);
-    }
+  if (hadc->Instance == ADC1)
+  {
+    uint32_t adc_val = HAL_ADC_GetValue(hadc);	// 12-bit ADC sample: 0..4095
+    HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, adc_val);
+  }
 }
+*/
+
+/* Task 2 - MAF Implementation */
+/*volatile static uint32_t x = 0;
+volatile static uint32_t y = 0;
+volatile static float x_norm = 0.0f;
+volatile static float y_norm = 0.0f;
+volatile static float buff[MAF_TAPS] = {0.0f};
+volatile static uint8_t idx = 0;
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+	if(hadc->Instance == ADC1)
+	{
+
+	x = HAL_ADC_GetValue(&hadc1);
+
+	x_norm = ( (x * 3.3f / 4095.0f) -1.0f ) / 0.9f;
+
+	buff[idx] = x_norm;
+
+	idx = (idx +1) % MAF_TAPS;
+
+	float sum = 0.0f;
+
+	for (uint8_t i= 0; i < MAF_TAPS; i++)
+	{
+	   sum = sum + buff[i];
+	}
+
+	y_norm = sum / MAF_TAPS;
+
+	y= (uint32_t) ( ( y_norm * 0.9f + 1.0f ) * 4095.0f / 3.3f );
+
+	HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, x);
+    HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, y);
+
+	}
+}*/
+
+/* Filter Constants */
+#define TAPS 4
+float buffer[TAPS] = {0.0f};
+int buffer_index = 0;
+
+/* Normalization Constants */
+const float V_REF = 3.3f;
+const float ADC_MAX = 4095.0f;
+const float OFFSET = 1.0f;
+const float AMPLITUDE = 0.9f;
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+    // 1. Read Raw ADC Value
+    uint32_t adc_raw = HAL_ADC_GetValue(hadc);
+
+    // 2. Convert to Voltage (Standard Mapping Step 1)
+    float v_in = ((float)adc_raw / ADC_MAX) * V_REF;
+
+    // 3. Normalize to [-1, 1] (Standard Mapping Step 2)
+    // (Value - Center) / Swing
+    float xn = (v_in - OFFSET) / AMPLITUDE;
+
+    // 4. 4-Tap Moving Average Filter
+    buffer[buffer_index] = xn;
+    buffer_index = (buffer_index + 1) % TAPS;
+
+    float yn = 0.0f;
+    for (int i = 0; i < TAPS; i++) {
+        yn += buffer[i];
+    }
+    yn /= (float)TAPS;
+
+    // 5. De-normalize for DAC (Standard Mapping Step 3)
+    // (Math * Swing) + Center -> then convert to bits
+    float v_out = (yn * AMPLITUDE) + OFFSET;
+    uint32_t dac_val = (uint32_t)((v_out / V_REF) * ADC_MAX);
+
+    // 6. Output to DAC Channels
+    // Channel 2: Filtered Output, Channel 1: Original Input
+    HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, dac_val);
+    HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, adc_raw);
+}
+
 /* USER CODE END 4 */
 
 /**
@@ -284,7 +279,9 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+
+
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.

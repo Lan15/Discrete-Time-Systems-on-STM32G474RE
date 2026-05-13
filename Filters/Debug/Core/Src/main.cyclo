@@ -1,6 +1,4 @@
-../Core/Src/main.c:69:5:main	2
-../Core/Src/main.c:156:14:adc_to_normalized	1
-../Core/Src/main.c:164:17:normalized_to_dac	5
-../Core/Src/main.c:190:6:HAL_ADC_ConvCpltCallback	4
-../Core/Src/main.c:226:6:SystemClock_Config	3
-../Core/Src/main.c:276:6:Error_Handler	1
+../Core/Src/main.c:68:5:main	1
+../Core/Src/main.c:183:6:HAL_ADC_ConvCpltCallback	2
+../Core/Src/main.c:221:6:SystemClock_Config	3
+../Core/Src/main.c:271:6:Error_Handler	1
